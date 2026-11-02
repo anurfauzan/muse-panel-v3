@@ -1,0 +1,51 @@
+<!doctype html><html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Muse Panel v3</title>
+<style>
+:root{--bg:#10151c;--tx:#e8edf4;--mut:#8896a8;--line:#222b37;--ok:#4ade80;--bad:#ff6b6b;--warn:#f5b942;--ram:#7cc4ff;--cpu:#f5b942}
+*{box-sizing:border-box}
+body{margin:0 auto;max-width:640px;padding:20px 18px 40px;background:var(--bg);color:var(--tx);font:16px/1.45 ui-rounded,"Segoe UI",system-ui,sans-serif}
+h1{font-size:22px;font-weight:700;margin:0 0 4px}
+.sub{color:var(--mut);font-size:14px;margin-bottom:22px}
+.svc{border-left:5px solid var(--mut);padding:2px 0 16px 14px;margin-bottom:18px;border-bottom:1px solid var(--line)}
+.svc.active{border-left-color:var(--ok)}.svc.failed{border-left-color:var(--bad)}
+.svc b{font-size:19px}.mut{color:var(--mut);font-size:14px}.ev{font-size:13px;color:var(--mut);margin-top:8px}
+.btns{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+button{padding:11px 4px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--tx);font:inherit;font-size:15px}
+button:active{background:#1c2430}button:focus-visible{outline:2px solid var(--ram)}button.d{color:var(--bad)}
+.ch{margin:22px 0 6px;display:flex;justify-content:space-between;align-items:baseline}
+svg{width:100%;height:84px;display:block;background:#0c1117;border-radius:8px}
+#lg{position:fixed;inset:0;background:#10151cf2;display:none;padding:18px;overflow:auto}
+#lg>div{max-width:640px;margin:auto}pre{white-space:pre-wrap;word-break:break-all;font-size:12px;color:#c5cfdb}
+</style></head><body>
+<h1>Muse Panel v3</h1><div class="sub" id="up">Memuat…</div>
+<div class="mut" id="sys" style="margin-bottom:18px"></div>
+<div id="sv"></div>
+<div class="ch"><b>RAM terpakai</b><span class="mut" id="rv"></span></div><svg id="gr" viewBox="0 0 300 84" preserveAspectRatio="none"></svg>
+<div class="ch"><b>CPU</b><span class="mut" id="cv"></span></div><svg id="gc" viewBox="0 0 300 84" preserveAspectRatio="none"></svg>
+<div class="mut" style="margin-top:6px">Grafik 1 jam terakhir, diperbarui tiap 10 detik</div>
+<div class="mut" id="ft" style="margin-top:22px"></div>
+<div id="lg"><div><div class="ch" style="margin-top:0"><b id="lt"></b><button style="padding:8px 16px" onclick="lg.style.display='none'">Tutup</button></div><pre id="lp"></pre></div></div>
+<script>
+let T=localStorage.getItem("tk")||"";const $=s=>document.getElementById(s);
+async function api(p,o={}){const r=await fetch(p,{...o,headers:{"X-Token":T,"Content-Type":"application/json"}});
+ if(r.status==401){T=prompt("Masukkan token panel:")||"";localStorage.setItem("tk",T);return T?api(p,o):null}return r.json()}
+function line(id,d,i,c){const n=d.length;if(n<2)return;
+ $(id).innerHTML=`<polyline points="${d.map((x,k)=>(k/(n-1)*300).toFixed(1)+","+(84-x[i]*0.84).toFixed(1)).join(" ")}" fill="none" stroke="${c}" stroke-width="2" vector-effect="non-scaling-stroke"/>`}
+function up(s){if(s==null)return "-";const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?h+"j "+m+"m":m+"m"}
+function evLabel(e){return e.type=="restart"?"restart":e.type=="died"?"mati":"nyala"}
+async function load(){const d=await api("/api/status");if(!d)return;
+ $("up").textContent="Terakhir dicek "+new Date().toLocaleTimeString("id-ID");
+ const sy=d.system||{};$("sys").textContent="Disk "+(sy.disk_pct??"-")+"% · Load "+(sy.load1??"-")+" · Host jalan "+up(sy.host_uptime_s);
+ $("sv").innerHTML=d.services.map(s=>`<div class="svc ${s.state}"><b>${s.name}</b>
+ <div class="mut">${s.state=="active"?"Berjalan":"Mati"} (${s.sub}) · uptime ${up(s.uptime_s)} · restart ${s.restarts}x/jam${s.mem_mb!=null?" · "+s.mem_mb+" MB":""}</div>
+ ${s.note?`<div class="mut">⚠️ ${s.note}</div>`:""}
+ <div class="ev">${(s.events||[]).map(e=>evLabel(e)+" "+new Date(e.t*1000).toLocaleTimeString("id-ID")).join(" · ")||"Belum ada kejadian tercatat"}</div>
+ <div class="btns"><button onclick="act('${s.name}','start')">Start</button><button onclick="act('${s.name}','restart')">Restart</button><button class="d" onclick="act('${s.name}','stop')">Stop</button><button onclick="logs('${s.name}')">Log</button></div></div>`).join("");
+ const h=d.hist,l=h[h.length-1];if(l){$("rv").textContent=l[1]+"%";$("cv").textContent=l[2]+"%"}
+ line("gr",h,1,"#7cc4ff");line("gc",h,2,"#f5b942");
+ $("ft").textContent="Panel jalan "+up(sy.panel_uptime_s)+" · v3, stdlib-only, tanpa systemd/sudo"}
+async function act(n,a){if((a=="stop"||a=="restart")&&!confirm((a=="stop"?"Hentikan ":"Restart ")+n+"?"))return;const r=await api("/api/action",{method:"POST",body:JSON.stringify({name:n,action:a})});if(r&&!r.ok)alert(r.msg||"Gagal menjalankan perintah");load()}
+async function logs(n){$("lt").textContent="Log "+n;$("lp").textContent="Memuat…";$("lg").style.display="block";const r=await api("/api/logs?name="+n);$("lp").textContent=r?r.log:""}
+load();setInterval(load,10000);
+</script></body></html>

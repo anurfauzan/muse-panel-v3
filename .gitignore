@@ -1,0 +1,9 @@
+# Runtime & rahasia — jangan dicommit
+config.json
+events.json
+*.log
+# Build & cache Python
+__pycache__/
+*.pyc
+# Arsip distribusi (dibuat ulang dari source)
+*.zip
